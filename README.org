@@ -1,14 +1,30 @@
 An Emacs plugin for the [[https://lean-lang.org][Lean 4]] theorem prover, working
 toward feature parity with [[https://github.com/Julian/lean.nvim][lean.nvim]].
 
-Built on built-in *Eglot*.
+Built for *Eglot* lsp client.
 
 #+begin_quote
 ⚠️ *Vibe-coded.* This project is written largely by prompting an AI coding
 agent. Expect rough edges; review before relying on it.
 #+end_quote
 
-* Status
+* Installation
+
+#+begin_src elisp
+(add-to-list 'load-path "/path/to/lean-emacs")
+(require 'leanmacs-mode)
+#+end_src
+
+Open a ~.lean~ file in a Lake project, start the server with ~eglot~, then run
+~leanmacs-goal~ inside a proof. The goal buffer then follows the cursor.
+
+** Requirements
+
+- Emacs 29.1+ (developed on 30.2).
+- A Lean 4 toolchain (~lake~, ~lean~) on ~PATH~, e.g. via
+  [[https://github.com/leanprover/elan][elan]].
+
+* Features
 
 Early. The current milestone is the RPC keystone: connect to the server and show
 the live goal. Unicode abbreviation input (\to → →, \alpha → α) is also in.
@@ -20,46 +36,6 @@ the live goal. Unicode abbreviation input (\to → →, \alpha → α) is also i
 
 The =Evil (Doom)= binding is the suggested local-leader key; see [[*Keybindings][Keybindings]] to
 enable it.
-
-* Unicode input
-
-~leanmacs-mode~ activates a Quail input method named =Leanmacs=. Type a
-backslash followed by an abbreviation to insert the corresponding Unicode
-symbol:
-
-| Type      | Inserts | Note                          |
-|-----------+---------+-------------------------------|
-| ~\alpha~  | α       |                               |
-| ~\to~     | →       |                               |
-| ~\and~    | ∧       |                               |
-| ~\<>~     | ⟨⟩      | point lands between the pair  |
-| ~\norm~   | ‖‖      | point lands between the pair  |
-| ~\\~      | \       | escape the leader             |
-
-The ~$CURSOR~-style abbreviations (mostly matching delimiter pairs) expand with
-point placed where the cursor marker was, which lean4-mode's input method does
-not do.
-
-Toggle the method off and on in a buffer with ~toggle-input-method~. To stop
-~leanmacs-mode~ from enabling it automatically, set ~leanmacs-input-enable~ to
-~nil~. The table is generated from ~data/abbreviations.json~; after changing
-that file, run ~leanmacs-input-setup~ to rebuild.
-
-* Requirements
-
-- Emacs 29.1+ (developed on 30.2).
-- A Lean 4 toolchain (~lake~, ~lean~) on ~PATH~, e.g. via
-  [[https://github.com/leanprover/elan][elan]].
-
-* Installation
-
-#+begin_src elisp
-(add-to-list 'load-path "/path/to/lean-emacs")
-(require 'leanmacs-mode)
-#+end_src
-
-Open a ~.lean~ file in a Lake project, start the server with ~eglot~, then run
-~leanmacs-goal~ inside a proof. The goal buffer then follows the cursor.
 
 * Development
 
