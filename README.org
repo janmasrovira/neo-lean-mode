@@ -32,6 +32,11 @@ goal is interactive -- each subexpression carries the server's info, so
 go-to-definition/type jumps from the subexpression under point to its source
 (wired into Doom's =+lookup/= commands automatically; see [[*Doom integration][Doom integration]]).
 
+Hover works through ElDoc: move point onto a subexpression in the goal buffer
+and its type and docstring appear in the echo area (use ~eldoc-doc-buffer~ for
+the full, multi-line view).  The subexpression under point is highlighted as you
+move, so you can see exactly which subterm the hover refers to.
+
 Also: Unicode abbreviation input (\to → →, \alpha → α) and file-processing
 progress bars (lines still being elaborated are marked in the left fringe; a ~|~
 in the margin on terminals).

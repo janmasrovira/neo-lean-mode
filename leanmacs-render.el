@@ -61,6 +61,13 @@
   "Face for the `Expected type:' header above the term goal."
   :group 'leanmacs)
 
+(defface leanmacs-goal-hover
+  '((t :inherit font-lock-function-name-face :weight bold))
+  "Face for the subexpression under point in the goal buffer.
+Changes the text colour and weight rather than the background, which reads
+better over the goal's own highlighting."
+  :group 'leanmacs)
+
 (defun leanmacs-render--hyp-name (name)
   "Return hypothesis NAME with the appropriate name face.
 Names carrying the inaccessible marker `✝' (optionally with a superscript
@@ -162,6 +169,30 @@ so it is rendered the same way under `leanmacs-render-term-goal-header'."
                         'face 'leanmacs-goal-expected-type)
             "\n"
             (leanmacs-render-goal term-goal))))
+
+(defun leanmacs-render-info-popup (popup)
+  "Render an `InfoPopup' POPUP to a string, or nil when there is nothing to show.
+POPUP is what `Lean.Widget.InteractiveDiagnostics.infoToInteractive' returns
+for a subexpression: an optional :exprExplicit and :type (both
+`CodeWithInfos') and an optional :doc string.  Mirrors lean.nvim's tooltip:
+the explicit expression and its type on one line as \"EXPR : TYPE\", then the
+docstring after a blank line."
+  (when popup
+    (let* ((expr (plist-get popup :exprExplicit))
+           (type (plist-get popup :type))
+           (doc (plist-get popup :doc))
+           (parts '()))
+      (cond
+       ((and expr type)
+        (push (concat (leanmacs-render-tagged-text expr) " : "
+                      (leanmacs-render-tagged-text type))
+              parts))
+       (type (push (leanmacs-render-tagged-text type) parts))
+       (expr (push (leanmacs-render-tagged-text expr) parts)))
+      (when (and (stringp doc) (not (string-empty-p doc)))
+        (push doc parts))
+      (when parts
+        (string-join (nreverse parts) "\n\n")))))
 
 (defun leanmacs-render-state (goals term-goal)
   "Render the proof state at point to a string.

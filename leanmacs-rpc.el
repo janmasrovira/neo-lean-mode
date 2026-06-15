@@ -253,5 +253,15 @@ yields a vector of LSP `LocationLink's."
    subsession "Lean.Widget.getGoToLocation"
    (list :kind kind :info info) success error))
 
+(defun leanmacs-rpc-info-to-interactive (subsession info success error)
+  "Request the info popup for INFO on SUBSESSION.
+INFO is the `InfoWithCtx' handle taken from a subexpression's tag (the
+`leanmacs-info' text property).  Calls
+`Lean.Widget.InteractiveDiagnostics.infoToInteractive' and yields an
+`InfoPopup' plist with optional :exprExplicit, :type and :doc."
+  (leanmacs-rpc-subsession-call
+   subsession "Lean.Widget.InteractiveDiagnostics.infoToInteractive"
+   info success error))
+
 (provide 'leanmacs-rpc)
 ;;; leanmacs-rpc.el ends here

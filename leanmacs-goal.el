@@ -21,6 +21,7 @@
 
 (require 'cl-lib)
 (require 'seq)
+(require 'eldoc)
 (require 'leanmacs-rpc)
 (require 'leanmacs-render)
 (require 'leanmacs-infoview)
@@ -190,6 +191,108 @@ has not moved yet when we return), so we must report success here."
   (leanmacs--goal-go-to "type"))
 
 (define-key leanmacs-infoview-mode-map (kbd "RET") #'leanmacs-goal-go-to-definition)
+
+;;;; Hover: type and docs of the subexpression under point (via ElDoc)
+
+(defun leanmacs-goal-eldoc-function (callback &rest _)
+  "ElDoc function for the goal buffer: the type and docs of the subexpr at point.
+Reads the `leanmacs-info' text property under point, asks the Lean server (on
+the source buffer's session) via `infoToInteractive', and reports the result
+asynchronously through CALLBACK.  Returns non-nil when a request is dispatched
+so ElDoc waits for the async answer.
+
+The response is dropped if point has since moved, so a slow reply cannot show
+the wrong subexpression's type."
+  (when-let* ((info (get-text-property (point) 'leanmacs-info))
+              (src leanmacs-infoview--source-buffer)
+              ((buffer-live-p src))
+              (pos leanmacs-infoview--source-pos))
+    (let ((buf (current-buffer))
+          (pt (point)))
+      (with-current-buffer src
+        (when (eglot-current-server)
+          (let ((subsession (leanmacs-rpc-open pos)))
+            (leanmacs-rpc-info-to-interactive
+             subsession info
+             (lambda (popup)
+               (when (and (buffer-live-p buf)
+                          (eq (with-current-buffer buf (point)) pt))
+                 (when-let* ((text (leanmacs-render-info-popup popup)))
+                   (funcall callback text))))
+             #'ignore))
+          t)))))
+
+(defvar-local leanmacs--goal-hover-overlay nil
+  "Overlay highlighting the subexpression under point in the goal buffer.")
+
+(defun leanmacs--subexpr-coords (path)
+  "Return the coordinate list of subexpression PATH, or nil.
+PATH is Lean's `SubExpr.Pos' serialization: a slash-separated path of
+coordinates such as \"/1/0\", with the root being \"/\" (the empty path)."
+  (and (stringp path)
+       (seq-remove #'string-empty-p (split-string path "/"))))
+
+(defun leanmacs--subexpr-ancestor-p (ancestor descendant)
+  "Non-nil if subexpression ANCESTOR is an ancestor of, or equal to, DESCENDANT.
+Ancestry is prefix containment on the coordinate paths (compared per
+coordinate, not as raw strings), so the root \"/\" is an ancestor of every
+subexpression."
+  ;; Both must be real paths.  The root \"/\" and a missing path both have
+  ;; empty coordinates, so without the `stringp' guard the root would count as
+  ;; an ancestor of every unpropertised character (separators, the turnstile,
+  ;; hypothesis names), and the span would engulf the whole buffer.
+  (and (stringp ancestor) (stringp descendant)
+       (let ((a (leanmacs--subexpr-coords ancestor))
+             (d (leanmacs--subexpr-coords descendant)))
+         (and (<= (length a) (length d))
+              (cl-every #'equal a d)))))
+
+(defun leanmacs--goal-span-at (pos)
+  "Return (START . END) of the subexpression under POS, or nil.
+The span is the full, contiguous extent of the innermost subexpression
+covering POS: the maximal run whose `leanmacs-subexpr-pos' is that
+subexpression's path or a descendant of it.  Because a subexpression always
+renders as one contiguous block, this yields its complete extent -- nested
+children and the subexpression's own delimiters alike -- so hovering a
+binder's brace highlights the whole binder rather than a stray fragment."
+  (let ((path (get-text-property pos 'leanmacs-subexpr-pos)))
+    (when path
+      (let ((start pos)
+            (end pos)
+            (min (point-min))
+            (max (point-max)))
+        (while (and (> start min)
+                    (leanmacs--subexpr-ancestor-p
+                     path (get-text-property (1- start) 'leanmacs-subexpr-pos)))
+          (setq start (1- start)))
+        (while (and (< end max)
+                    (leanmacs--subexpr-ancestor-p
+                     path (get-text-property end 'leanmacs-subexpr-pos)))
+          (setq end (1+ end)))
+        (cons start end)))))
+
+(defun leanmacs--goal-update-hover ()
+  "Move the hover highlight to the subexpression under point.
+Hides it when point is not on an interactive subexpression."
+  (let ((span (leanmacs--goal-span-at (point))))
+    (cond
+     (span
+      (unless (overlayp leanmacs--goal-hover-overlay)
+        (setq leanmacs--goal-hover-overlay (make-overlay 1 1))
+        (overlay-put leanmacs--goal-hover-overlay 'face 'leanmacs-goal-hover))
+      (move-overlay leanmacs--goal-hover-overlay (car span) (cdr span)
+                    (current-buffer)))
+     ((overlayp leanmacs--goal-hover-overlay)
+      (delete-overlay leanmacs--goal-hover-overlay)))))
+
+(defun leanmacs--infoview-eldoc-setup ()
+  "Enable ElDoc hover and the hover highlight in the goal buffer."
+  (add-hook 'eldoc-documentation-functions
+            #'leanmacs-goal-eldoc-function nil t)
+  (eldoc-mode 1)
+  (add-hook 'post-command-hook #'leanmacs--goal-update-hover nil t))
+
+(add-hook 'leanmacs-infoview-mode-hook #'leanmacs--infoview-eldoc-setup)
 
 (provide 'leanmacs-goal)
 ;;; leanmacs-goal.el ends here
