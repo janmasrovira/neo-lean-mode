@@ -29,6 +29,48 @@
 (defconst leanmacs-render-default-goal-prefix "⊢ "
   "Symbol shown before a goal's target type when none is provided.")
 
+;;;; Faces
+;;
+;; Structural highlighting only (mirroring lean.nvim's infoview): the goal
+;; expressions themselves are not re-tokenised, but the turnstile, case labels,
+;; hypothesis names and the expected-type header are coloured.  Each inherits a
+;; standard font-lock face so it follows the user's theme; rebind to taste.
+
+(defface leanmacs-goal-prefix
+  '((t :inherit font-lock-keyword-face))
+  "Face for a goal's prefix (the `⊢' turnstile)."
+  :group 'leanmacs)
+
+(defface leanmacs-goal-case
+  '((t :inherit font-lock-keyword-face))
+  "Face for a goal's `case' label."
+  :group 'leanmacs)
+
+(defface leanmacs-goal-hypothesis-name
+  '((t :inherit font-lock-variable-name-face))
+  "Face for accessible hypothesis names."
+  :group 'leanmacs)
+
+(defface leanmacs-goal-inaccessible-name
+  '((t :inherit shadow))
+  "Face for inaccessible hypothesis names (those marked with `✝')."
+  :group 'leanmacs)
+
+(defface leanmacs-goal-expected-type
+  '((t :inherit font-lock-keyword-face))
+  "Face for the `Expected type:' header above the term goal."
+  :group 'leanmacs)
+
+(defun leanmacs-render--hyp-name (name)
+  "Return hypothesis NAME with the appropriate name face.
+Names carrying the inaccessible marker `✝' (optionally with a superscript
+index, e.g. `n✝¹') are dimmed, and the marker is stripped -- the shadow face
+alone conveys inaccessibility."
+  (if (string-search "✝" name)
+      (propertize (replace-regexp-in-string "✝[⁰¹²³⁴⁵⁶⁷⁸⁹]*" "" name)
+                  'face 'leanmacs-goal-inaccessible-name)
+    (propertize name 'face 'leanmacs-goal-hypothesis-name)))
+
 (defun leanmacs-render--apply-info (string info pos)
   "Return STRING with INFO/POS attached where no `leanmacs-info' is set yet.
 Nested tags render innermost-first, so the smallest (most specific)
@@ -73,7 +115,8 @@ span (see `leanmacs-render--apply-info'); only text leaves contribute text."
   "Render one `InteractiveHypothesisBundle' HYP to a string.
 Bundled names share a type, e.g. \"a b : Nat\"; let-binders also show
 their value after \":=\"."
-  (let* ((names (string-join (append (plist-get hyp :names) nil) " "))
+  (let* ((names (mapconcat #'leanmacs-render--hyp-name
+                           (append (plist-get hyp :names) nil) " "))
          (type (leanmacs-render-tagged-text (plist-get hyp :type)))
          (val (plist-get hyp :val)))
     ;; `concat' preserves the type's text properties (the subexpression info),
@@ -88,9 +131,13 @@ Shows an optional case name, the hypotheses, and the target type prefixed
 by the goal's `goalPrefix' (default `leanmacs-render-default-goal-prefix')."
   (let ((lines '())
         (user-name (plist-get goal :userName))
-        (prefix (or (plist-get goal :goalPrefix) leanmacs-render-default-goal-prefix)))
+        (prefix (propertize (or (plist-get goal :goalPrefix)
+                                leanmacs-render-default-goal-prefix)
+                            'face 'leanmacs-goal-prefix)))
     (when (and user-name (not (string-empty-p user-name)))
-      (push (format "case %s" user-name) lines))
+      (push (propertize (format "case %s" user-name)
+                        'face 'leanmacs-goal-case)
+            lines))
     (seq-doseq (hyp (plist-get goal :hyps))
       (push (leanmacs-render--hypothesis hyp) lines))
     (push (concat prefix (leanmacs-render-tagged-text (plist-get goal :type))) lines)
@@ -111,7 +158,9 @@ Returns \"No goals.\" when GOALS is empty."
 A term goal carries hypotheses and a target type just like a tactic goal,
 so it is rendered the same way under `leanmacs-render-term-goal-header'."
   (when term-goal
-    (concat leanmacs-render-term-goal-header "\n"
+    (concat (propertize leanmacs-render-term-goal-header
+                        'face 'leanmacs-goal-expected-type)
+            "\n"
             (leanmacs-render-goal term-goal))))
 
 (defun leanmacs-render-state (goals term-goal)

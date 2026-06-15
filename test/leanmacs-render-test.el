@@ -110,6 +110,28 @@
                        (list :hyps (vector) :type '(:text "B")))))
     (should (equal (leanmacs-render-goals goals) "⊢ A\n\n⊢ B"))))
 
+;;;; Structural faces
+
+(ert-deftest leanmacs-render-goal-faces ()
+  (let* ((goal (list :hyps (vector (list :names (vector "a" "h✝¹")
+                                         :type '(:text "Nat")))
+                     :type '(:text "a = b")))
+         (s (leanmacs-render-goal goal)))
+    ;; the inaccessible marker (and its superscript) is stripped: "h✝¹" -> "h"
+    (should (equal s "a h : Nat\n⊢ a = b"))
+    ;; accessible hyp name "a"
+    (should (eq (get-text-property 0 'face s) 'leanmacs-goal-hypothesis-name))
+    ;; inaccessible hyp name "h" (was "h✝¹") is dimmed
+    (should (eq (get-text-property 2 'face s) 'leanmacs-goal-inaccessible-name))
+    ;; the turnstile carries the prefix face
+    (should (eq (get-text-property (string-match "⊢" s) 'face s)
+                'leanmacs-goal-prefix))))
+
+(ert-deftest leanmacs-render-goal-case-face ()
+  (let* ((goal (list :userName "succ" :hyps (vector) :type '(:text "P")))
+         (s (leanmacs-render-goal goal)))
+    (should (eq (get-text-property 0 'face s) 'leanmacs-goal-case))))
+
 ;;;; Term goal / combined state
 
 (ert-deftest leanmacs-render-term-goal-nil ()
