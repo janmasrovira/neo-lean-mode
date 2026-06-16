@@ -22,15 +22,22 @@
 ;;
 ;; When `neo-lean-prompt-on-stale-imports' is non-nil we watch incoming
 ;; diagnostics and offer to run the restart automatically, mirroring the
-;; server's own "Restart File" hint.
+;; server's own "Restart File" hint.  That diagnostic is sticky and identical
+;; whether a dependency broke or was fixed, so to avoid re-prompting on every
+;; redraw we latch it; and because we want the prompt to come back after you
+;; *fix* a dependency, saving any Lean file re-arms the latch in every open Lean
+;; buffer, letting Lean's re-notification (which is transitive) prompt again.
 ;;
-;; That diagnostic only fires while a file is a registered dependent of the
-;; changed one.  Once a file fails to load its imports, Lean drops it from the
+;; Lean's notification only reaches files that are still registered dependents,
+;; though.  Once a file fails to load its imports -- e.g. after it is restarted
+;; against a dependency that does not compile -- Lean drops it from the
 ;; dependency graph (the worker reports its import closure only after a
-;; *successful* header load), so fixing a broken dependency never re-notifies
-;; the files that import it -- they stay stuck.  To bridge that, when
-;; `neo-lean-restart-dependents-on-save' is non-nil we watch saves and, on
-;; saving a Lean file, restart the open files whose header imports it.
+;; *successful* header load), so fixing the dependency never re-notifies it.
+;; To cover that, when `neo-lean-restart-dependents-on-save' is non-nil we
+;; restart importers ourselves on save, following the import chain transitively
+;; through open buffers (save B -> restart the open files importing B, then the
+;; open files importing those, ...).  This does not rely on Lean's graph, so it
+;; works even for a dependency that failed to compile.
 
 ;;; Code:
 
@@ -46,10 +53,11 @@
 
 (defcustom neo-lean-prompt-on-stale-imports t
   "When non-nil, offer to restart the file when the server reports stale imports.
-Lean emits an error diagnostic when an open file's imports are out of date
-\(a dependency changed and was rebuilt); enabling this prompts you to run
-`neo-lean-restart-file'.  When nil the diagnostic still shows but no prompt
-appears."
+Lean reports a diagnostic at the top of the file when an open file's imports are
+out of date -- whether because its dependencies were never built or because a
+dependency (possibly transitive) changed while the file is open; enabling this
+prompts you to run `neo-lean-restart-file'.  When nil the diagnostic still shows
+but no prompt appears."
   :type 'boolean
   :group 'neo-lean)
 
@@ -91,20 +99,23 @@ server reports its imports are out of date."
 ;;;; Detect the server's "imports out of date" diagnostic and offer a restart
 
 (defun neo-lean--imports-out-of-date-p (diagnostic)
-  "Return non-nil if DIAGNOSTIC is Lean's \"imports out of date\" error.
-DIAGNOSTIC is an LSP `Diagnostic' plist.  Matches an error at the very top of
-the file whose message Lean uses for this condition."
+  "Return non-nil if DIAGNOSTIC is one of Lean's \"imports out of date\" reports.
+DIAGNOSTIC is an LSP `Diagnostic' plist.  Lean emits two such diagnostics at the
+top of the file, both asking you to restart it: a hard error at file-setup time
+when the imports cannot be loaded (\"...must be rebuilt\"), and a softer
+information diagnostic pushed by the watchdog when a dependency goes stale while
+the file is open (\"...should be rebuilt\").  The watchdog variant is what
+covers *transitive* importers, so catch it too: severities differ between the
+two, so that is not checked; the message prefix and position identify them."
   (let ((start (plist-get (plist-get diagnostic :range) :start))
         (msg (plist-get diagnostic :message)))
-    (and (eql (plist-get diagnostic :severity) 1) ; DiagnosticSeverity.Error
-         (stringp msg)
-         (string-prefix-p "Imports are out of date and must be rebuilt" msg)
+    (and (stringp msg)
+         (string-prefix-p "Imports are out of date and " msg)
          (eql (plist-get start :line) 0)
          (eql (plist-get start :character) 0))))
 
 (defconst neo-lean--imports-out-of-date-message
-  "Imports are out of date and must be rebuilt.  \
-Run M-x neo-lean-restart-file to reload them."
+  "Imports are out of date.  Run M-x neo-lean-restart-file to reload them."
   "Diagnostic message shown when a file's imports are out of date.
 Replaces the server's generic \"Restart File\" hint with the real command.")
 
@@ -147,9 +158,11 @@ Replaces the server's generic \"Restart File\" hint with the real command.")
 
 (defcustom neo-lean-restart-dependents-on-save t
   "When non-nil, restart open files that import a Lean file you save.
-After you fix a dependency, Lean does not re-notify the files that import it
-\(it drops them from its dependency graph once their imports fail to load), so
-this restarts them so they reload it.  Set to nil to disable."
+After you fix a dependency, Lean does not reliably re-notify the files that
+import it (a file that failed to load its imports drops off Lean's dependency
+graph), so this reloads them directly.  Importers are followed transitively
+through *open* buffers (save B, and the open files importing B are restarted,
+then the open files importing those, and so on).  Set to nil to disable."
   :type 'boolean
   :group 'neo-lean)
 
@@ -173,8 +186,9 @@ independent of where the package's source root sits."
    (concat "/" (replace-regexp-in-string "\\." "/" module) ".lean")
    file))
 
-(defun neo-lean--dependents-of (file)
-  "Return live `neo-lean-mode' buffers other than FILE's whose header imports FILE."
+(defun neo-lean--open-direct-dependents (file)
+  "Return live `neo-lean-mode' buffers whose header directly imports FILE.
+FILE is an absolute path; a buffer never matches its own file."
   (let (dependents)
     (dolist (buffer (buffer-list))
       (with-current-buffer buffer
@@ -185,18 +199,52 @@ independent of where the package's source root sits."
                    (seq-some (lambda (m) (neo-lean--import-matches-file-p m file))
                              (neo-lean--buffer-import-modules)))
           (push buffer dependents))))
-    (nreverse dependents)))
+    dependents))
 
-(defun neo-lean--maybe-restart-dependents ()
-  "Restart open files that import the just-saved Lean file, so they reload it."
+(defun neo-lean--transitive-dependent-buffers (file)
+  "Return live Lean buffers importing FILE directly or transitively.
+The chain is followed through *open* buffers only -- we cannot see the imports
+of files that are not open -- so an importer reachable solely through a closed
+intermediate is not found.  Buffers come back deepest-first, so restarting them
+in order rebuilds inner dependencies before the files that import them."
+  (let ((worklist (list (file-truename file)))
+        (seen (list (file-truename file)))
+        (result '()))
+    (while worklist
+      (dolist (buffer (neo-lean--open-direct-dependents (pop worklist)))
+        (when-let* ((bfile (buffer-local-value 'buffer-file-name buffer))
+                    (truename (file-truename bfile))
+                    ((not (member truename seen))))
+          (push truename seen)
+          (push truename worklist)
+          (push buffer result))))
+    result))
+
+(defun neo-lean--rearm-stale-prompts ()
+  "Re-arm the stale-imports prompt in every open Lean buffer.
+The watchdog's stale-imports diagnostic is sticky and identical whether a
+dependency was broken or fixed, so the latch in `neo-lean--imports-out-of-date'
+would suppress a second prompt after the first.  Clearing it on every save lets
+Lean's re-notification -- which is transitive, so it reaches importers our
+direct-only restart does not -- prompt again for the files it still affects.
+Harmless for unrelated buffers: with no fresh diagnostic, nothing re-prompts."
+  (dolist (buffer (buffer-list))
+    (with-current-buffer buffer
+      (when (derived-mode-p 'neo-lean-mode)
+        (setq neo-lean--imports-out-of-date nil)))))
+
+(defun neo-lean--after-save ()
+  "React to saving a Lean file: re-arm stale prompts and reload direct importers."
+  (when neo-lean-prompt-on-stale-imports
+    (neo-lean--rearm-stale-prompts))
   (when (and neo-lean-restart-dependents-on-save buffer-file-name)
-    (dolist (buffer (neo-lean--dependents-of (file-truename buffer-file-name)))
+    (dolist (buffer (neo-lean--transitive-dependent-buffers buffer-file-name))
       (with-current-buffer buffer
         (neo-lean-restart-file)))))
 
 (defun neo-lean--restart-setup ()
   "Install the dependency-save watcher in the current Lean buffer."
-  (add-hook 'after-save-hook #'neo-lean--maybe-restart-dependents nil t))
+  (add-hook 'after-save-hook #'neo-lean--after-save nil t))
 
 (add-hook 'neo-lean-mode-hook #'neo-lean--restart-setup)
 

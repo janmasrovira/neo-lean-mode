@@ -22,13 +22,18 @@ use the \"Restart File\" command in your editor."
                 :range '(:start (:line 0 :character 0)
                                 :end (:line 0 :character 0)))))
 
-(ert-deftest neo-lean-imports-out-of-date-p-matches ()
+(ert-deftest neo-lean-imports-out-of-date-p-matches-error ()
+  ;; The hard file-setup error ("...must be rebuilt", severity Error).
   (should (neo-lean--imports-out-of-date-p (neo-lean-restart-test--diag))))
 
-(ert-deftest neo-lean-imports-out-of-date-p-wrong-severity ()
-  ;; A warning (2), not an error (1), is not the stale-imports condition.
-  (should-not (neo-lean--imports-out-of-date-p
-               (neo-lean-restart-test--diag :severity 2))))
+(ert-deftest neo-lean-imports-out-of-date-p-matches-information ()
+  ;; The watchdog's softer "...should be rebuilt" (Information, severity 3) is
+  ;; the variant that covers transitive importers -- it must match too.
+  (should (neo-lean--imports-out-of-date-p
+           (neo-lean-restart-test--diag
+            :severity 3
+            :message "Imports are out of date and should be rebuilt; \
+use the \"Restart File\" command in your editor."))))
 
 (ert-deftest neo-lean-imports-out-of-date-p-wrong-message ()
   (should-not (neo-lean--imports-out-of-date-p
