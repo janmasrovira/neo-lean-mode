@@ -23,6 +23,14 @@
 ;; When `neo-lean-prompt-on-stale-imports' is non-nil we watch incoming
 ;; diagnostics and offer to run the restart automatically, mirroring the
 ;; server's own "Restart File" hint.
+;;
+;; That diagnostic only fires while a file is a registered dependent of the
+;; changed one.  Once a file fails to load its imports, Lean drops it from the
+;; dependency graph (the worker reports its import closure only after a
+;; *successful* header load), so fixing a broken dependency never re-notifies
+;; the files that import it -- they stay stuck.  To bridge that, when
+;; `neo-lean-restart-dependents-on-save' is non-nil we watch saves and, on
+;; saving a Lean file, restart the open files whose header imports it.
 
 ;;; Code:
 
@@ -30,6 +38,11 @@
 (require 'seq)
 (require 'eglot)
 (require 'neo-lean-rpc)
+
+;; Eglot internal: the buffer-local semantic-token cache.  Declared so the
+;; byte-compiler is happy on Emacs versions whose Eglot predates it; we only
+;; touch it when `eglot-semantic-tokens-mode' is actually on.
+(defvar eglot--semtok-state)
 
 (defcustom neo-lean-prompt-on-stale-imports t
   "When non-nil, offer to restart the file when the server reports stale imports.
@@ -64,6 +77,14 @@ server reports its imports are out of date."
               (lambda (&rest args)
                 (append (apply orig args) (list :dependencyBuildMode "once")))))
     (eglot--signal-textDocument/didOpen))
+  ;; Reopening behind Eglot's back leaves its semantic-token cache
+  ;; (`eglot--semtok-state': data + resultId) stale -- the next fontification
+  ;; would request a delta against a resultId the restarted worker no longer
+  ;; knows, the request comes back empty, and the buffer loses all LSP coloring.
+  ;; Reset that state and reflush so a fresh full request runs.
+  (when (bound-and-true-p eglot-semantic-tokens-mode)
+    (setq eglot--semtok-state nil)
+    (font-lock-flush))
   (setq neo-lean--imports-out-of-date nil)
   (message "neo-lean: restarting file (rebuilding imports)..."))
 
@@ -121,6 +142,63 @@ Replaces the server's generic \"Restart File\" hint with the real command.")
               (run-with-timer 0 nil #'neo-lean--offer-restart buffer))
              ((not stale)
               (setq neo-lean--imports-out-of-date nil)))))))))
+
+;;;; Reload dependents when a dependency is saved
+
+(defcustom neo-lean-restart-dependents-on-save t
+  "When non-nil, restart open files that import a Lean file you save.
+After you fix a dependency, Lean does not re-notify the files that import it
+\(it drops them from its dependency graph once their imports fail to load), so
+this restarts them so they reload it.  Set to nil to disable."
+  :type 'boolean
+  :group 'neo-lean)
+
+(defun neo-lean--buffer-import-modules ()
+  "Return the module names imported by the current buffer's header, as strings."
+  (save-excursion
+    (save-restriction
+      (widen)
+      (goto-char (point-min))
+      (let (modules)
+        (while (re-search-forward
+                "^[ \t]*import[ \t]+\\(?:all[ \t]+\\)?\\([^ \t\r\n]+\\)" nil t)
+          (push (match-string-no-properties 1) modules))
+        (nreverse modules)))))
+
+(defun neo-lean--import-matches-file-p (module file)
+  "Non-nil when Lean MODULE names FILE, an absolute path.
+Compares by path suffix (MODULE's dotted name as a `.lean' path), so it is
+independent of where the package's source root sits."
+  (string-suffix-p
+   (concat "/" (replace-regexp-in-string "\\." "/" module) ".lean")
+   file))
+
+(defun neo-lean--dependents-of (file)
+  "Return live `neo-lean-mode' buffers other than FILE's whose header imports FILE."
+  (let (dependents)
+    (dolist (buffer (buffer-list))
+      (with-current-buffer buffer
+        (when (and (derived-mode-p 'neo-lean-mode)
+                   buffer-file-name
+                   (not (file-equal-p buffer-file-name file))
+                   (eglot-current-server)
+                   (seq-some (lambda (m) (neo-lean--import-matches-file-p m file))
+                             (neo-lean--buffer-import-modules)))
+          (push buffer dependents))))
+    (nreverse dependents)))
+
+(defun neo-lean--maybe-restart-dependents ()
+  "Restart open files that import the just-saved Lean file, so they reload it."
+  (when (and neo-lean-restart-dependents-on-save buffer-file-name)
+    (dolist (buffer (neo-lean--dependents-of (file-truename buffer-file-name)))
+      (with-current-buffer buffer
+        (neo-lean-restart-file)))))
+
+(defun neo-lean--restart-setup ()
+  "Install the dependency-save watcher in the current Lean buffer."
+  (add-hook 'after-save-hook #'neo-lean--maybe-restart-dependents nil t))
+
+(add-hook 'neo-lean-mode-hook #'neo-lean--restart-setup)
 
 (provide 'neo-lean-restart)
 ;;; neo-lean-restart.el ends here

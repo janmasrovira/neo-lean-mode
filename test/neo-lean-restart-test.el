@@ -41,5 +41,24 @@ use the \"Restart File\" command in your editor."
                 :range '(:start (:line 5 :character 0)
                                 :end (:line 5 :character 3))))))
 
+;;;; Import-aware dependency reload
+
+(ert-deftest neo-lean-import-matches-file-p ()
+  (should (neo-lean--import-matches-file-p "Foo.Bar" "/p/Foo/Bar.lean"))
+  (should (neo-lean--import-matches-file-p "Bar" "/p/Foo/Bar.lean"))
+  (should-not (neo-lean--import-matches-file-p "Foo.Bar" "/p/Foo/Baz.lean"))
+  ;; Must match on a path-segment boundary, not mid-component.
+  (should-not (neo-lean--import-matches-file-p "Foo.Bar" "/p/XFoo/Bar.lean")))
+
+(ert-deftest neo-lean-buffer-import-modules ()
+  (with-temp-buffer
+    (insert "prelude\n"
+            "import Foo.Bar\n"
+            "import all Baz.Qux\n"
+            "\n"
+            "def x := 1\n")
+    (should (equal (neo-lean--buffer-import-modules)
+                   '("Foo.Bar" "Baz.Qux")))))
+
 (provide 'neo-lean-restart-test)
 ;;; neo-lean-restart-test.el ends here
