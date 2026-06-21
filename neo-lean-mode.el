@@ -21,6 +21,7 @@
 ;;; Code:
 
 (require 'eglot)
+(require 'neo-lean-indent)
 (require 'neo-lean-input)
 
 (defgroup neo-lean nil
@@ -190,6 +191,9 @@ a fresh request, then flush font-lock to trigger it."
   (setq-local comment-start-skip "[ \t]*--+[ \t]*")
   (setq-local comment-use-syntax t)
   (setq-local tab-width 2)
+  (setq-local indent-tabs-mode nil)
+  (setq-local indent-line-function #'neo-lean-indent-line)
+  (setq-local electric-indent-inhibit t)
   ;; Suggest `lake build' when compiling.
   (setq-local compile-command "lake build")
   ;; Unicode abbreviation input (\alpha -> α, \<> -> ⟨⟩, ...).

@@ -12,6 +12,7 @@ EMACS ?= emacs
 
 SRC   := $(wildcard neo-lean*.el)
 TESTS := test/neo-lean-render-test.el test/neo-lean-input-test.el \
+         test/neo-lean-indent-test.el \
          test/neo-lean-progress-test.el test/neo-lean-restart-test.el \
          test/neo-lean-infoview-test.el
 
