@@ -49,6 +49,10 @@ Coalesces rapid movement into a single request."
 (defvar-local neo-lean--goal-last-point nil
   "Buffer position of the last scheduled refresh.")
 
+(defvar neo-lean-diagnostics-updated-functions nil
+  "Abnormal hook run in the Lean source buffer after diagnostics update.
+Each function is called with URI and DIAGNOSTICS.")
+
 (defun neo-lean--goal-line-range (pos)
   "Return the one-line LSP line range containing POS."
   (when-let* ((line (plist-get (plist-get pos :position) :line)))
@@ -336,20 +340,28 @@ Clicks outside fold headers simply move point inside the infoview."
     (setq neo-lean--goal-last-point (point))
     (neo-lean--goal-schedule-update)))
 
+(defun neo-lean--goal-diagnostics-updated (uri _diagnostics)
+  "Refresh a visible infoview when Lean publishes diagnostics for URI."
+  (when (and neo-lean-goal-auto-update
+             (eglot-current-server)
+             (neo-lean-infoview-visible-p)
+             (neo-lean--goal-buffer-uri-p uri))
+    (neo-lean--goal-schedule-update)))
+
 (cl-defmethod eglot-handle-notification :after
   (_server (_method (eql textDocument/publishDiagnostics))
-           &key uri &allow-other-keys)
-  "Refresh a visible infoview when Lean publishes diagnostics for its source."
-  (when-let* (((bound-and-true-p neo-lean-goal-auto-update))
-              (src (neo-lean--goal-source-buffer)))
+           &key uri diagnostics &allow-other-keys)
+  "Run Lean diagnostics update hooks for the visible infoview source."
+  (when-let* ((src (neo-lean--goal-source-buffer)))
     (with-current-buffer src
-      (when (and (eglot-current-server)
-                 (neo-lean--goal-buffer-uri-p uri))
-        (neo-lean--goal-schedule-update)))))
+      (run-hook-with-args 'neo-lean-diagnostics-updated-functions
+                          uri diagnostics))))
 
 (defun neo-lean--goal-setup ()
   "Install buffer-local cursor-follow tracking for the goal buffer."
-  (add-hook 'post-command-hook #'neo-lean--goal-post-command nil t))
+  (add-hook 'post-command-hook #'neo-lean--goal-post-command nil t)
+  (add-hook 'neo-lean-diagnostics-updated-functions
+            #'neo-lean--goal-diagnostics-updated nil t))
 
 (add-hook 'neo-lean-mode-hook #'neo-lean--goal-setup)
 

@@ -343,6 +343,18 @@
   (should (equal (neo-lean-render-state (vector) nil) "No goals."))
   (should (equal (neo-lean-render-state nil nil) "No goals.")))
 
+(ert-deftest neo-lean-goal-diagnostics-updated-schedules-visible-infoview ()
+  (let ((uri "file:///tmp/Demo.lean")
+        scheduled)
+    (cl-letf (((symbol-function 'eglot-current-server) (lambda () 'server))
+              ((symbol-function 'neo-lean-infoview-visible-p) (lambda () t))
+              ((symbol-function 'neo-lean--goal-buffer-uri-p)
+               (lambda (candidate) (equal candidate uri)))
+              ((symbol-function 'neo-lean--goal-schedule-update)
+               (lambda () (setq scheduled t))))
+      (neo-lean--goal-diagnostics-updated uri nil)
+      (should scheduled))))
+
 ;;;; Info popup (hover)
 
 (ert-deftest neo-lean-render-info-popup-nil ()
