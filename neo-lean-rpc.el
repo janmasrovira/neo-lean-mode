@@ -36,6 +36,14 @@
   (if (fboundp 'eglot-uri-to-path) 'eglot-uri-to-path 'eglot--uri-to-path)
   "Convert an LSP document URI to a local file path.")
 
+;;;; Diagnostic tags
+
+(defconst neo-lean--diagnostic-tag-unsolved-goals 1
+  "Lean diagnostic tag for unsolved-goals diagnostics.")
+
+(defconst neo-lean--diagnostic-tag-goals-accomplished 2
+  "Lean diagnostic tag for goals-accomplished diagnostics.")
+
 ;;;; Error codes
 
 ;; Lean LSP/JSON-RPC error codes that mean the RPC session is dead and a new

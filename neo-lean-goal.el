@@ -54,10 +54,17 @@ Coalesces rapid movement into a single request."
   (when-let* ((line (plist-get (plist-get pos :position) :line)))
     (list :start line :end (1+ line))))
 
+(defun neo-lean--goal-diagnostic-tag-p (diagnostic tag)
+  "Return non-nil when DIAGNOSTIC has Lean diagnostic TAG."
+  (seq-contains-p (plist-get diagnostic :leanTags) tag))
+
 (defun neo-lean--goal-diagnostic-visible-p (diagnostic)
   "Return non-nil when interactive DIAGNOSTIC should appear in the infoview."
   (and (not (plist-get diagnostic :isSilent))
-       (not (seq-contains-p (plist-get diagnostic :leanTags) 2))))
+       (not (neo-lean--goal-diagnostic-tag-p
+             diagnostic neo-lean--diagnostic-tag-unsolved-goals))
+       (not (neo-lean--goal-diagnostic-tag-p
+             diagnostic neo-lean--diagnostic-tag-goals-accomplished))))
 
 (defun neo-lean--goal-filter-interactive-diagnostics (diagnostics)
   "Filter Lean interactive DIAGNOSTICS for infoview display."

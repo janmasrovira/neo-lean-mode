@@ -243,6 +243,21 @@
         :severity 3
         :message (list :text text)))
 
+(ert-deftest neo-lean-goal-filter-interactive-diagnostics ()
+  (let* ((visible (neo-lean-render-test--text-diagnostic "trace output"))
+         (unsolved (plist-put (neo-lean-render-test--text-diagnostic
+                               "unsolved goals")
+                              :leanTags (vector 1)))
+         (accomplished (plist-put (neo-lean-render-test--text-diagnostic
+                                   "goals accomplished")
+                                  :leanTags (vector 2)))
+         (silent (plist-put (neo-lean-render-test--text-diagnostic
+                             "silent")
+                            :isSilent t)))
+    (should (equal (neo-lean--goal-filter-interactive-diagnostics
+                    (list visible unsolved accomplished silent))
+                   (list visible)))))
+
 (ert-deftest neo-lean-render-messages ()
   (let ((s (neo-lean-render-messages
             (list (neo-lean-render-test--text-diagnostic
