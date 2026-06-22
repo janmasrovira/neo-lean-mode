@@ -6,3 +6,6 @@ theorem foo (a b : Nat) (h : a = b) : b = a := by
 
 example : True := by
   sorry
+
+theorem pending (a b : Nat) (h : a = b) : b = a := by
+  sorry

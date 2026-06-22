@@ -339,9 +339,54 @@
                          "▼ Lean 4 Information\n"
                          "trace.profiler: 12ms"))))
 
+(ert-deftest neo-lean-render-state-goals-accomplished ()
+  (let ((s (neo-lean-render-state (vector) nil nil "Goals accomplished 🎉")))
+    (should (equal s "Goals accomplished 🎉"))
+    (should (eq (get-text-property 0 'face s) 'neo-lean-goal-status)))
+  (should (equal (neo-lean-render-state
+                  (vector (list :hyps (vector) :type '(:text "A")))
+                  nil nil
+                  "Goals accomplished 🎉")
+                 "Goals accomplished 🎉\n\n⊢ A"))
+  (should (equal (neo-lean-render-state
+                  (vector) nil
+                  (list (neo-lean-render-test--text-diagnostic
+                         "trace.profiler: 12ms"))
+                  "Goals accomplished 🎉")
+                 (concat "Goals accomplished 🎉\n\nMessages:\n"
+                         "▼ Lean 4 Information\n"
+                         "trace.profiler: 12ms"))))
+
 (ert-deftest neo-lean-render-state-empty ()
   (should (equal (neo-lean-render-state (vector) nil) "No goals."))
   (should (equal (neo-lean-render-state nil nil) "No goals.")))
+
+(ert-deftest neo-lean-goal-accomplished-message-uses-source-marker ()
+  (with-temp-buffer
+    (insert "theorem easy : True := by\n  trivial\n")
+    (let ((neo-lean-goals-accomplished-character "*"))
+      (neo-lean-goals-accomplished--redraw
+       (list (list :range (list :start (list :line 0 :character 0)
+                                :end (list :line 1 :character 0))
+                   :leanTags (vector 2)
+                   :isSilent t)))
+      (goto-char (point-min))
+      (should (equal (neo-lean--goal-accomplished-message (point))
+                     "Goals accomplished *"))
+      (let ((neo-lean-goals-accomplished-enable nil))
+        (should-not (neo-lean--goal-accomplished-message (point)))))))
+
+(ert-deftest neo-lean-goal-diagnostics-updated-schedules-visible-infoview ()
+  (let ((uri "file:///tmp/Demo.lean")
+        scheduled)
+    (cl-letf (((symbol-function 'eglot-current-server) (lambda () 'server))
+              ((symbol-function 'neo-lean-infoview-visible-p) (lambda () t))
+              ((symbol-function 'neo-lean--goal-buffer-uri-p)
+               (lambda (candidate) (equal candidate uri)))
+              ((symbol-function 'neo-lean--goal-schedule-update)
+               (lambda () (setq scheduled t))))
+      (neo-lean--goal-diagnostics-updated uri nil)
+      (should scheduled))))
 
 ;;;; Info popup (hover)
 

@@ -68,6 +68,11 @@
   "Face for the `Messages:' header above Lean diagnostics."
   :group 'neo-lean)
 
+(defface neo-lean-goal-status
+  '((t :inherit success))
+  "Face for status lines in the infoview."
+  :group 'neo-lean)
+
 (defface neo-lean-goal-fold
   '((t :inherit font-lock-keyword-face))
   "Face for clickable infoview fold chevrons."
@@ -291,6 +296,10 @@ Returns \"No goals.\" when GOALS is empty."
       "No goals."
     (mapconcat #'neo-lean-render-goal goals "\n\n")))
 
+(defun neo-lean-render-goals-accomplished (message)
+  "Render the completed-proof MESSAGE."
+  (propertize message 'face 'neo-lean-goal-status))
+
 (defconst neo-lean-render-term-goal-header "Expected type:"
   "Header shown above the term goal (the expected type at point).")
 
@@ -458,15 +467,19 @@ parent trace class, used only for display."
                 (setq i (1+ i)))
               (string-join (nreverse parts) "\n\n")))))
 
-(defun neo-lean-render-state (goals term-goal &optional messages)
+(defun neo-lean-render-state
+    (goals term-goal &optional messages goals-accomplished)
   "Render the proof state at point to a string.
 GOALS is the vector of interactive tactic goals; TERM-GOAL is the optional
 `InteractiveTermGoal' (the expected type), or nil.  MESSAGES is an optional
-list of Lean interactive diagnostics, including trace output.  Shows the tactic
-goals, then an `Expected type' section when a term goal is present, then a
-`Messages' section when diagnostics are present, and \"No goals.\" when there
-is no content."
+list of Lean interactive diagnostics, including trace output.
+GOALS-ACCOMPLISHED is an optional completed-proof status string.  Shows the
+completed-proof status first when present, tactic goals when present, then an
+`Expected type' section when a term goal is present, then a `Messages' section
+when diagnostics are present, and \"No goals.\" when there is no content."
   (let ((sections '()))
+    (when goals-accomplished
+      (push (neo-lean-render-goals-accomplished goals-accomplished) sections))
     (unless (seq-empty-p goals)
       (push (neo-lean-render-goals goals) sections))
     (when-let* ((term (neo-lean-render-term-goal term-goal)))

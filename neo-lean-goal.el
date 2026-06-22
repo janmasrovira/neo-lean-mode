@@ -22,6 +22,7 @@
 (require 'seq)
 (require 'eldoc)
 (require 'neo-lean-rpc)
+(require 'neo-lean-markers)
 (require 'neo-lean-render)
 (require 'neo-lean-infoview)
 
@@ -49,6 +50,12 @@ Coalesces rapid movement into a single request."
 (defvar-local neo-lean--goal-last-point nil
   "Buffer position of the last scheduled refresh.")
 
+(defvar neo-lean-diagnostics-updated-functions nil
+  "Abnormal hook run in the Lean source buffer after diagnostics update.
+Each function is called with URI, DIAGNOSTICS, and FILTERED-DIAGNOSTICS.
+DIAGNOSTICS are the original diagnostics from Lean; FILTERED-DIAGNOSTICS are
+the non-silent diagnostics forwarded to Eglot.")
+
 (defun neo-lean--goal-line-range (pos)
   "Return the one-line LSP line range containing POS."
   (when-let* ((line (plist-get (plist-get pos :position) :line)))
@@ -70,14 +77,6 @@ Coalesces rapid movement into a single request."
   "Filter Lean interactive DIAGNOSTICS for infoview display."
   (seq-filter #'neo-lean--goal-diagnostic-visible-p diagnostics))
 
-(defun neo-lean--goal-source-buffer ()
-  "Return the live source buffer for the visible infoview, or nil."
-  (when-let* (((neo-lean-infoview-visible-p))
-              (buffer (get-buffer neo-lean-infoview-buffer-name))
-              (src (buffer-local-value 'neo-lean-infoview--source-buffer buffer))
-              ((buffer-live-p src)))
-    src))
-
 (defun neo-lean--goal-buffer-uri-p (uri)
   "Return non-nil if URI names the current buffer's file."
   (when-let* ((path (and uri (neo-lean-uri-to-path uri)))
@@ -97,6 +96,13 @@ Coalesces rapid movement into a single request."
                (with-current-buffer buf
                  (setq neo-lean--goal-timer nil)
                  (neo-lean--goal-update nil))))))))
+
+(defun neo-lean--goal-accomplished-message (point)
+  "Return the completed-proof infoview message for POINT in the current buffer."
+  (when (and neo-lean-goals-accomplished-enable
+             (not (string-empty-p neo-lean-goals-accomplished-character))
+             (neo-lean-goals-accomplished-at-line-p point))
+    (concat "Goals accomplished " neo-lean-goals-accomplished-character)))
 
 (defun neo-lean--infoview-fold-state ()
   "Return the current infoview buffer's fold-state table."
@@ -119,7 +125,8 @@ Coalesces rapid movement into a single request."
   (let ((neo-lean-render-fold-state (neo-lean--infoview-fold-state)))
     (neo-lean-render-state (plist-get data :goals)
                            (plist-get data :term-goal)
-                           (plist-get data :messages))))
+                           (plist-get data :messages)
+                           (plist-get data :goals-accomplished))))
 
 (defun neo-lean--infoview-set-render-data (data)
   "Store structured infoview DATA in the shared goal buffer."
@@ -214,6 +221,7 @@ once they arrive; otherwise refresh its contents in place."
   (when (eglot-current-server)
     (let* ((id (cl-incf neo-lean--goal-request-id))
            (src (current-buffer))
+           (request-point (point))
            (pos (neo-lean-rpc-position-params))
            (line-range (neo-lean--goal-line-range pos))
            (subsession (neo-lean-rpc-open pos)))
@@ -223,7 +231,11 @@ once they arrive; otherwise refresh its contents in place."
                   (show (goals term-goal diagnostics)
                     (let* ((data (list :goals goals
                                        :term-goal term-goal
-                                       :messages diagnostics)))
+                                       :messages diagnostics
+                                       :goals-accomplished
+                                       (with-current-buffer src
+                                         (neo-lean--goal-accomplished-message
+                                          request-point)))))
                       ;; Remember where this goal came from so interactive
                       ;; commands in the goal buffer can query the server.
                       (neo-lean-infoview-set-source src pos)
@@ -336,20 +348,20 @@ Clicks outside fold headers simply move point inside the infoview."
     (setq neo-lean--goal-last-point (point))
     (neo-lean--goal-schedule-update)))
 
-(cl-defmethod eglot-handle-notification :after
-  (_server (_method (eql textDocument/publishDiagnostics))
-           &key uri &allow-other-keys)
-  "Refresh a visible infoview when Lean publishes diagnostics for its source."
-  (when-let* (((bound-and-true-p neo-lean-goal-auto-update))
-              (src (neo-lean--goal-source-buffer)))
-    (with-current-buffer src
-      (when (and (eglot-current-server)
-                 (neo-lean--goal-buffer-uri-p uri))
-        (neo-lean--goal-schedule-update)))))
+(defun neo-lean--goal-diagnostics-updated
+    (uri _diagnostics &optional _filtered-diagnostics)
+  "Refresh a visible infoview when Lean publishes diagnostics for URI."
+  (when (and neo-lean-goal-auto-update
+             (eglot-current-server)
+             (neo-lean-infoview-visible-p)
+             (neo-lean--goal-buffer-uri-p uri))
+    (neo-lean--goal-schedule-update)))
 
 (defun neo-lean--goal-setup ()
   "Install buffer-local cursor-follow tracking for the goal buffer."
-  (add-hook 'post-command-hook #'neo-lean--goal-post-command nil t))
+  (add-hook 'post-command-hook #'neo-lean--goal-post-command nil t)
+  (add-hook 'neo-lean-diagnostics-updated-functions
+            #'neo-lean--goal-diagnostics-updated nil t))
 
 (add-hook 'neo-lean-mode-hook #'neo-lean--goal-setup)
 

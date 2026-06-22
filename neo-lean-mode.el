@@ -208,6 +208,7 @@ a fresh request, then flush font-lock to trigger it."
   (add-to-list 'auto-mode-alist '("\\.lean\\'" . neo-lean-mode)))
 
 (require 'neo-lean-goal)
+(require 'neo-lean-markers)
 (require 'neo-lean-progress)
 (require 'neo-lean-restart)
 ;; Optional editor integrations; each self-disables when its host is absent.

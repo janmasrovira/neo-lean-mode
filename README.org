@@ -65,6 +65,13 @@ go-to-definition/type jumps from the subexpression under point to its source
 Trace messages have clickable chevrons; click them, or press ~TAB~ on the
 chevron line, to collapse and expand nested trace output.
 
+Completed proofs are marked in the source margin with a ~🎉~, mirroring
+lean.nvim's goals-accomplished sign.  The marker comes from Lean's silent
+~goalsAccomplished~ diagnostic, not from scanning theorem text.  Set
+~neo-lean-goals-accomplished-enable~ to nil to disable the marker; other
+features such as Flymake diagnostics may still use the margin.  When point is
+inside a completed-proof range, the infoview shows ~Goals accomplished 🎉~.
+
 Hover works through ElDoc: move point onto a subexpression in the goal buffer
 and its type and docstring appear in the echo area (use ~eldoc-doc-buffer~ for
 the full, multi-line view).  The subexpression under point is highlighted as you
@@ -87,6 +94,7 @@ in the margin on terminals).
 | ~neo-lean-goal-go-to-declaration~ | --        | --          | As above, but the declaration.                                             |
 | ~neo-lean-goal-go-to-type~        | --        | ~SPC c t~   | As above, but the subexpression's type.                                    |
 | ~neo-lean-restart-file~           | ~C-c C-r~ | --          | Reopen the file on the server to rebuild and reload its imports.           |
+| ~neo-lean-goals-accomplished-clear~ | --      | --          | Remove completed-proof markers from the buffer.                            |
 | ~neo-lean-input-activate~         | --        | --          | Turn on the Neo-Lean Unicode input method.                                 |
 | ~neo-lean-progress-clear~         | --        | --          | Remove file-processing progress bars from the buffer.                      |
 

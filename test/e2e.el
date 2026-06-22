@@ -59,19 +59,21 @@ LABEL is used in progress messages."
 (let ((deadline (+ (float-time) 5)))
   (while (< (float-time) deadline) (accept-process-output nil 0.1)))
 
-;; Goal inside `by / rfl' (line 2), should show `⊢ 1 = 1'.
+;; Goal inside completed `by / rfl' (line 2), should show the completed-proof
+;; status from Lean's goals-accomplished marker.
 (let ((g1 (e2e-goal-at 2 2 "by rfl")))
   (message "[e2e] --- goal #1 (by rfl) ---\n%s" g1)
-  (cl-assert (string-match-p "1 = 1" g1) nil "expected `1 = 1' goal, got: %s" g1))
+  (cl-assert (string-match-p "Goals accomplished" g1)
+             nil "expected completed-proof status, got: %s" g1))
 
 ;; Goal inside the `sorry' example (line 8), should show `⊢ True'.
 (let ((g2 (e2e-goal-at 8 2 "sorry")))
   (message "[e2e] --- goal #2 (sorry) ---\n%s" g2)
   (cl-assert (string-match-p "True" g2) nil "expected `True' goal, got: %s" g2))
 
-;; Goal inside `foo' (line 5), exercises hypothesis rendering: should list
+;; Goal inside `pending' (line 11), exercises hypothesis rendering: should list
 ;; the hypotheses a, b, h and the target `⊢ b = a'.
-(let ((g3 (e2e-goal-at 5 2 "foo body")))
+(let ((g3 (e2e-goal-at 11 2 "pending body")))
   (message "[e2e] --- goal #3 (hypotheses) ---\n%s" g3)
   (cl-assert (and (string-match-p "a b : Nat" g3)
                   (string-match-p "h : a = b" g3)
@@ -91,7 +93,7 @@ LABEL is used in progress messages."
   (neo-lean--goal-post-command)
   (e2e-pump
    (lambda ()
-     (string-match-p "1 = 1"
+     (string-match-p "Goals accomplished"
                      (with-current-buffer (neo-lean-infoview--buffer) (buffer-string))))
    20 "cursor-follow auto-update")
   (message "[e2e] --- cursor-follow result ---\n%s"
