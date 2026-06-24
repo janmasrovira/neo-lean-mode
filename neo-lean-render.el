@@ -86,8 +86,11 @@ better over the goal's own highlighting."
   :group 'neo-lean)
 
 (defface neo-lean-goal-inserted
-  '((t :inherit diff-added))
-  "Face for proof-state fragments Lean marks as inserted."
+  '((t :inherit success :weight normal))
+  "Face for proof-state fragments Lean marks as inserted.
+Inherits `success' so the colour tracks the active theme's green (e.g. the
+Doom theme), and changes the text colour rather than the background, which
+reads better over the goal's own highlighting."
   :group 'neo-lean)
 
 (defface neo-lean-goal-removed
@@ -96,8 +99,11 @@ better over the goal's own highlighting."
   :group 'neo-lean)
 
 (defface neo-lean-goal-changed
-  '((t :inherit diff-refine-changed))
-  "Face for proof-state fragments Lean marks as changed."
+  '((t :inherit success :weight normal))
+  "Face for proof-state fragments Lean marks as changed.
+Inherits `success' so the colour tracks the active theme's green (e.g. the
+Doom theme), and changes the text colour rather than the background, which
+reads better over the goal's own highlighting."
   :group 'neo-lean)
 
 (defvar neo-lean-render-fold-state nil
