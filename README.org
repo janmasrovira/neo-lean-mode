@@ -106,6 +106,20 @@ Enabled automatically when Doom is detected; no configuration required. It hooks
 neo-lean into various Doom features. For example, ~+lookup/definition~ works on
 the symbol under point in the goal buffer.
 
+* Customization
+
+The infoview highlights parts of the goal a tactic inserted, removed, or changed
+(e.g. after ~simp~) using three faces -- ~neo-lean-goal-inserted~,
+~neo-lean-goal-removed~, and ~neo-lean-goal-changed~. Customize them with ~M-x
+customize-group RET neo-lean~, or set them directly:
+
+#+begin_src elisp
+(custom-set-faces
+ '(neo-lean-goal-inserted ((t :foreground "green")))
+ '(neo-lean-goal-removed  ((t :foreground "red")))
+ '(neo-lean-goal-changed  ((t :foreground "plum"))))
+#+end_src
+
 * Development
 
 Run the batch test suite (pure functions, rendering, RPC wire-format, the input
