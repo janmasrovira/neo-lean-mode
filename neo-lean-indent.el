@@ -28,7 +28,7 @@
 (defconst neo-lean-indent--indent-after-regexp
   (concat "\\(?:"
           "\\_<\\(?:by\\|do\\|try\\|finally\\|then\\|else\\|where\\|from"
-          "\\|extends\\|deriving\\)\\_>"
+          "\\|extends\\|deriving\\|variable\\)\\_>"
           "\\|:="
           "\\|=>"
           "\\|[[:blank:]]="

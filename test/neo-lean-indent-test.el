@@ -81,6 +81,22 @@
                            "  | succ n ih =>\n"
                            "    ")))))
 
+(ert-deftest neo-lean-indent-after-bare-variable ()
+  (neo-lean-indent-test--with-buffer "variable\n{α : Type}"
+    (goto-char (point-min))
+    (forward-line 1)
+    (neo-lean-indent-line)
+    (should (equal (neo-lean-indent-test--line 2)
+                   "  {α : Type}"))))
+
+(ert-deftest neo-lean-indent-after-complete-variable ()
+  (neo-lean-indent-test--with-buffer "variable (x : Nat)\ndef foo := x"
+    (goto-char (point-min))
+    (forward-line 1)
+    (neo-lean-indent-line)
+    (should (equal (neo-lean-indent-test--line 2)
+                   "def foo := x"))))
+
 (ert-deftest neo-lean-indent-after-where ()
   (neo-lean-indent-test--with-buffer "structure Foo where\nfield : Nat"
     (goto-char (point-min))
